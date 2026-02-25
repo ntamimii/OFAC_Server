@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>OFAC Checker</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ----- Full Page Drag Highlight ----- */
+      body.dragover {
+        background: #e8f5e9; /* light green when dragging */
+        transition: background 0.2s;
+      }
+
+      /* ----- Page Background & Centering ----- */
+      body {
+        font-family: "Poppins", sans-serif;
+        background: #f0f2f5;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 50px 20px;
+        color: #333;
+      }
+
+      /* ----- Main Container ----- */
+      .container {
+        background: #fff;
+        padding: 50px 40px;
+        border-radius: 12px;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        max-width: 600px;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 35px;
+      }
+
+      /* ----- Header ----- */
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 600;
+        text-align: center;
+        color: #222;
+      }
+
+      /* ----- Description ----- */
+      .description {
+        background: #fdfdfd;
+        border-left: 5px solid #4caf50;
+        border-radius: 8px;
+        padding: 20px 25px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        line-height: 1.6;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .description .desc-text {
+        font-size: 14.5px;
+        color: #444;
+      }
+
+      .description .desc-disclaimer {
+        font-size: 13px;
+        color: #777;
+        font-style: italic;
+      }
+
+      /* ----- File Upload Form ----- */
+      form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+      }
+
+      input[type="file"] {
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+        cursor: pointer;
+        width: 250px;
+        text-align: center;
+      }
+
+      .instructions {
+        font-size: 13px;
+        color: #555;
+        text-align: center;
+      }
+
+      .template-instructions {
+        font-size: 13px;
+        color: #555;
+        text-align: center;
+        margin-top: 8px;
+      }
+
+      .template-instructions a {
+        color: #2196f3;
+        font-weight: 600;
+        text-decoration: none;
+        transition: color 0.3s;
+      }
+
+      .template-instructions a:hover {
+        color: #1976d2;
+      }
+
+      button {
+        padding: 12px 30px;
+        background: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        transition: background 0.3s;
+      }
+
+      button:hover {
+        background: #43a047;
+      }
+
+      /* ----- Progress Container ----- */
+      #progressContainer {
+        display: none;
+        width: 100%;
+        flex-direction: column;
+        gap: 15px;
+      }
+
+      #progressBarContainer {
+        width: 100%;
+        height: 20px;
+        background: #eee;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+
+      #progressBar {
+        background: #4caf50;
+        width: 0%;
+        height: 100%;
+        transition: width 0.3s;
+      }
+
+      #progressDetails {
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 15px;
+        font-family: monospace;
+        font-size: 13px;
+        color: #333;
+        height: 180px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+
+      /* ----- Download Link ----- */
+      #downloadContainer {
+        display: none;
+        text-align: center;
+      }
+
+      #downloadLink {
+        display: inline-block;
+        padding: 12px 25px;
+        background: #2196f3;
+        color: white;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: background 0.3s;
+      }
+
+      #downloadLink:hover {
+        background: #1976d2;
+      }
+
+      /* ----- Responsive ----- */
+      @media (max-width: 500px) {
+        .container {
+          padding: 30px 20px;
+        }
+        input[type="file"] {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>OFAC Publishers Checker</h1>
+
+      <div class="description">
+        <p class="desc-text">
+          This tool provides a quick and reliable way to screen publishers—both
+          individuals and organizations—against the
+          <strong>OFAC sanctions database</strong>. Potential matches are
+          flagged automatically, and screenshots of the official OFAC search
+          results are generated for every match, giving you a clear and
+          verifiable record.
+        </p>
+
+        <p class="desc-disclaimer">
+          <strong>Disclaimer:</strong> This service is for informational
+          purposes only and does not constitute legal advice. Always verify
+          results with official sources before taking any action.
+        </p>
+      </div>
+
+      <form>
+        <input type="file" name="publishers" accept=".xlsx" required />
+        <div class="instructions">
+          Please upload an <strong>XLSX file</strong> with one column titled
+          <strong>"Name"</strong> (one publisher per row, in English letters).
+          Need the correct format? Download our
+          <a href="/template/OFAC_Template.xlsx" download
+            ><strong>template file</strong></a
+          >.
+        </div>
+
+        <button type="submit">Scan</button>
+      </form>
+
+      <div id="progressContainer">
+        <div id="progressBarContainer">
+          <div id="progressBar"></div>
+        </div>
+        <div id="progressDetails">Waiting to start...</div>
+      </div>
+
+      <div id="downloadContainer">
+        <a id="downloadLink" href="#" download>Download Results ZIP</a>
+      </div>
+    </div>
+
+    <script>
+      const form = document.querySelector("form");
+      const fileInput = document.querySelector('input[name="publishers"]');
+      const progressContainer = document.getElementById("progressContainer");
+      const progressBar = document.getElementById("progressBar");
+      const progressDetails = document.getElementById("progressDetails");
+      const downloadContainer = document.getElementById("downloadContainer");
+      const downloadLink = document.getElementById("downloadLink");
+
+      // ----- Full-page drag and drop -----
+      ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+        document.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        document.addEventListener(eventName, () =>
+          document.body.classList.add("dragover"),
+        );
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        document.addEventListener(eventName, () =>
+          document.body.classList.remove("dragover"),
+        );
+      });
+
+      document.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files.length) {
+          fileInput.files = files; // just assign the file
+        }
+      });
+
+      // ----- Form Submit & SSE -----
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!fileInput.files.length) return alert("Please select a file.");
+
+        const formData = new FormData();
+        formData.append("publishers", fileInput.files[0]);
+
+        // Reset UI
+        downloadContainer.style.display = "none";
+        progressContainer.style.display = "flex";
+        progressBar.style.width = "0%";
+        progressDetails.textContent = "";
+        form.querySelector("button").textContent = "Scanning...";
+        // Auto scroll to progress section
+        setTimeout(() => {
+          progressContainer.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 100);
+
+        // EventSource for live progress
+        const es = new EventSource(`/upload-progress`);
+
+        es.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const percent = Math.floor((data.current / data.total) * 100);
+            progressBar.style.width = percent + "%";
+
+            if (data.status) {
+              progressDetails.textContent +=
+                (progressDetails.textContent ? "\n" : "") + data.status;
+              progressDetails.scrollTop = progressDetails.scrollHeight;
+            }
+
+            if (data.done) {
+              progressBar.style.width = "100%";
+              progressDetails.textContent += "\nScan complete!";
+              downloadLink.href = `/download/${data.zipFilename}`;
+              downloadContainer.style.display = "block";
+              form.querySelector("button").textContent = "Scan Again";
+              es.close();
+            }
+          } catch (err) {
+            console.error("Error parsing progress:", err);
+          }
+        };
+
+        es.onerror = (err) => {
+          console.error("SSE connection closed or failed:", err);
+          es.close();
+        };
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+          if (!response.ok) throw new Error("Upload failed");
+        } catch (err) {
+          console.error(err);
+          alert("Error processing file. Check console for details.");
+          form.querySelector("button").textContent = "Scan";
+          es.close();
+        }
+      });
+    </script>
+  </body>
+</html>
