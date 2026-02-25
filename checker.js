@@ -71,10 +71,37 @@ function searchName(publisherName, entries) {
 
 // ===== Puppeteer screenshot for OFAC search =====
 async function takeScreenshot(name, filepath) {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"], // required for free Render
-  });
+  async function takeScreenshot(name, filepath) {
+    try {
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--single-process",
+        ],
+      });
+
+      const page = await browser.newPage();
+      await page.goto(OFAC_URL, { waitUntil: "networkidle2" });
+
+      await page.type("#ctl00_MainContent_txtLastName", name);
+      await page.click("#ctl00_MainContent_btnSearch");
+
+      // Wait for results table or short timeout
+      await page
+        .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 5000 })
+        .catch(() => console.log("No results table appeared, continuing..."));
+
+      await page.screenshot({ path: filepath, fullPage: true });
+
+      await browser.close();
+    } catch (err) {
+      console.error(`Screenshot error for "${name}":`, err.message);
+    }
+  }
 
   const page = await browser.newPage();
   await page.goto(OFAC_URL, { waitUntil: "networkidle2" });
