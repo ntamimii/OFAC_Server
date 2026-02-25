@@ -71,56 +71,42 @@ function searchName(publisherName, entries) {
 
 // ===== Puppeteer screenshot for OFAC search =====
 async function takeScreenshot(name, filepath) {
-  async function takeScreenshot(name, filepath) {
-    try {
-      const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--single-process",
-        ],
-      });
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--single-process",
+      ],
+    });
 
-      const page = await browser.newPage();
-      await page.goto(OFAC_URL, { waitUntil: "networkidle2" });
+    const page = await browser.newPage();
+    await page.goto(OFAC_URL, { waitUntil: "networkidle2" });
 
-      await page.type("#ctl00_MainContent_txtLastName", name);
-      await page.click("#ctl00_MainContent_btnSearch");
+    await page.type("#ctl00_MainContent_txtLastName", name);
+    await page.click("#ctl00_MainContent_btnSearch");
 
-      // Wait for results table or short timeout
-      await page
-        .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 5000 })
-        .catch(() => console.log("No results table appeared, continuing..."));
+    // Wait for results table or timeout
+    await page
+      .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 7000 })
+      .catch(() =>
+        console.log(`No results table for "${name}", continuing...`),
+      );
 
-      await page.screenshot({ path: filepath, fullPage: true });
-
-      await browser.close();
-    } catch (err) {
-      console.error(`Screenshot error for "${name}":`, err.message);
-    }
+    await page.screenshot({ path: filepath, fullPage: true });
+  } catch (err) {
+    console.error(`Screenshot error for "${name}":`, err.message);
+  } finally {
+    if (browser) await browser.close();
   }
-
-  const page = await browser.newPage();
-  await page.goto(OFAC_URL, { waitUntil: "networkidle2" });
-
-  await page.type("#ctl00_MainContent_txtLastName", name);
-  await page.click("#ctl00_MainContent_btnSearch");
-
-  // Wait a bit for results to load
-  await page
-    .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 5000 })
-    .catch(() => console.log("No results table appeared, continuing..."));
-
-  await page.screenshot({ path: filepath, fullPage: true });
-
-  await browser.close();
 }
 
 // ===== EXPORTABLE FUNCTION =====
-// progressCallback(currentIndex, total, publisherName) – optional
+// progressCallback(currentIndex, total, publisherName, message) – optional
 async function runChecker(
   publishersFilePath,
   downloadsFolder,
