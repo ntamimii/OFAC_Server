@@ -71,15 +71,20 @@ function searchName(publisherName, entries) {
 
 // ===== Puppeteer screenshot for OFAC search =====
 async function takeScreenshot(name, filepath) {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"], // required for free Render
+  });
+
   const page = await browser.newPage();
   await page.goto(OFAC_URL, { waitUntil: "networkidle2" });
 
   await page.type("#ctl00_MainContent_txtLastName", name);
   await page.click("#ctl00_MainContent_btnSearch");
 
+  // Wait a bit for results to load
   await page
-    .waitForSelector("#ctl00_MainContent_gvResults")
+    .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 5000 })
     .catch(() => console.log("No results table appeared, continuing..."));
 
   await page.screenshot({ path: filepath, fullPage: true });
@@ -127,8 +132,6 @@ async function runChecker(
   for (let i = 0; i < total; i++) {
     const pub = publishers[i];
 
-    // Send progress: starting search
-    // Send progress: processing publisher
     if (progressCallback)
       progressCallback(
         i + 1,
@@ -153,7 +156,6 @@ async function runChecker(
       // Take screenshot
       const screenshotPath = path.join(screenshotsFolder, `${safeName}.png`);
       try {
-        // Notify frontend we are taking screenshot
         if (progressCallback)
           progressCallback(
             i + 1,
