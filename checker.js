@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const csv = require("csv-parser");
 const XLSX = require("xlsx");
-const puppeteer = require("puppeteer");
+const chromium = require("chrome-aws-lambda"); // ✅ Use chrome-aws-lambda for Render
 
 // ===== CONFIG =====
 const CSV_FOLDER = "./data"; // folder containing SDN + ALT CSVs
@@ -71,17 +71,14 @@ function searchName(publisherName, entries) {
 
 // ===== Puppeteer screenshot for OFAC search =====
 async function takeScreenshot(name, filepath) {
-  let browser;
+  let browser = null;
+
   try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process",
-      ],
+    browser = await chromium.puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath,
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
@@ -90,7 +87,7 @@ async function takeScreenshot(name, filepath) {
     await page.type("#ctl00_MainContent_txtLastName", name);
     await page.click("#ctl00_MainContent_btnSearch");
 
-    // Wait for results table or timeout
+    // Wait for results table or short timeout
     await page
       .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 7000 })
       .catch(() =>
@@ -98,6 +95,7 @@ async function takeScreenshot(name, filepath) {
       );
 
     await page.screenshot({ path: filepath, fullPage: true });
+    console.log(`Screenshot saved: ${filepath}`);
   } catch (err) {
     console.error(`Screenshot error for "${name}":`, err.message);
   } finally {
@@ -176,9 +174,9 @@ async function runChecker(
             pub.Name,
             `Taking OFAC screenshot for "${pub.Name}"`,
           );
+
         console.log(`Taking OFAC screenshot for "${pub.Name}"...`);
         await takeScreenshot(pub.Name, screenshotPath);
-        console.log(`Screenshot saved: ${screenshotPath}`);
         screenshotLink = `./screenshots/${safeName}.png`;
       } catch (err) {
         console.error("Screenshot error:", err.message);
