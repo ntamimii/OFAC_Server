@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const csv = require("csv-parser");
 const XLSX = require("xlsx");
-const chromium = require("chrome-aws-lambda"); // ✅ Use chrome-aws-lambda for Render
+const puppeteer = require("puppeteer");
 
 // ===== CONFIG =====
 const CSV_FOLDER = "./data"; // folder containing SDN + ALT CSVs
@@ -72,27 +72,35 @@ function searchName(publisherName, entries) {
 // ===== Puppeteer screenshot for OFAC search =====
 async function takeScreenshot(name, filepath) {
   let browser = null;
-
   try {
-    browser = await chromium.puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath,
-      headless: chromium.headless,
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--single-process",
+      ],
     });
 
     const page = await browser.newPage();
-    await page.goto(OFAC_URL, { waitUntil: "networkidle2" });
+    await page.goto(OFAC_URL, {
+      waitUntil: "domcontentloaded",
+      timeout: 20000,
+    });
+
+    if (!name) {
+      console.log("Empty name, skipping screenshot");
+      return;
+    }
 
     await page.type("#ctl00_MainContent_txtLastName", name);
     await page.click("#ctl00_MainContent_btnSearch");
 
-    // Wait for results table or short timeout
     await page
       .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 7000 })
-      .catch(() =>
-        console.log(`No results table for "${name}", continuing...`),
-      );
+      .catch(() => console.log(`No results table for "${name}"`));
 
     await page.screenshot({ path: filepath, fullPage: true });
     console.log(`Screenshot saved: ${filepath}`);
@@ -104,7 +112,7 @@ async function takeScreenshot(name, filepath) {
 }
 
 // ===== EXPORTABLE FUNCTION =====
-// progressCallback(currentIndex, total, publisherName, message) – optional
+// progressCallback(currentIndex, total, publisherName) – optional
 async function runChecker(
   publishersFilePath,
   downloadsFolder,
@@ -142,30 +150,29 @@ async function runChecker(
 
   for (let i = 0; i < total; i++) {
     const pub = publishers[i];
+    const safeName = (pub.Name || "EMPTY").replace(/[^a-zA-Z0-9]/g, "_");
 
+    // Send progress: starting search
     if (progressCallback)
-      progressCallback(
-        i + 1,
-        total,
-        pub.Name,
-        `Processing "${pub.Name}" (${i + 1}/${total})...`,
-      );
-
+      progressCallback(i + 1, total, pub.Name, "Searching SDN/ALT lists");
     console.log(`Processing "${pub.Name}" (${i + 1}/${total})...`);
 
     const matches = searchName(pub.Name, screeningEntries);
     const status = matches.length > 0 ? "MATCH" : "CLEAR";
 
     let screenshotLink = "";
-    if (SAVE_JSON_RESPONSES && matches.length > 0) {
-      const safeName = pub.Name.replace(/\s+/g, "_");
 
-      // Save JSON
-      const jsonPath = path.join(responsesFolder, `${safeName}.json`);
+    if (SAVE_JSON_RESPONSES) {
+      // Save JSON for ALL (MATCH + CLEAR)
+      const jsonPath = path.join(responsesFolder, `${safeName}_${i + 1}.json`);
       fs.writeFileSync(jsonPath, JSON.stringify(matches, null, 2));
 
-      // Take screenshot
-      const screenshotPath = path.join(screenshotsFolder, `${safeName}.png`);
+      // Take screenshot for ALL
+      const screenshotPath = path.join(
+        screenshotsFolder,
+        `${safeName}_${i + 1}.png`,
+      );
+
       try {
         if (progressCallback)
           progressCallback(
@@ -177,7 +184,8 @@ async function runChecker(
 
         console.log(`Taking OFAC screenshot for "${pub.Name}"...`);
         await takeScreenshot(pub.Name, screenshotPath);
-        screenshotLink = `./screenshots/${safeName}.png`;
+
+        screenshotLink = `./screenshots/${safeName}_${i + 1}.png`;
       } catch (err) {
         console.error("Screenshot error:", err.message);
       }
