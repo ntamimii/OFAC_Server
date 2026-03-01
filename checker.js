@@ -4,6 +4,8 @@ const path = require("path");
 const csv = require("csv-parser");
 const XLSX = require("xlsx");
 const puppeteer = require("puppeteer");
+// Use Render's system Chrome if available
+const CHROME_PATH = process.env.CHROME_PATH || null;
 
 // ===== CONFIG =====
 const CSV_FOLDER = "./data"; // folder containing SDN + ALT CSVs
@@ -129,6 +131,7 @@ async function runChecker(
   console.log("Launching Chromium...");
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: CHROME_PATH, // <-- add this
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
