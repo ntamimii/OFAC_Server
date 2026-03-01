@@ -1,4 +1,4 @@
-// checker.js (CommonJS version with progress callback)
+// checker.js (Single-browser version, screenshots for ALL, JSON for ALL)
 const fs = require("fs");
 const path = require("path");
 const csv = require("csv-parser");
@@ -69,50 +69,30 @@ function searchName(publisherName, entries) {
     .filter(Boolean);
 }
 
-// ===== Puppeteer screenshot for OFAC search =====
-async function takeScreenshot(name, filepath) {
-  let browser = null;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--single-process",
-      ],
-    });
+// ===== Puppeteer screenshot using a shared page =====
+async function takeScreenshot(name, filepath, page) {
+  if (!name) return;
 
-    const page = await browser.newPage();
-    await page.goto(OFAC_URL, {
-      waitUntil: "domcontentloaded",
-      timeout: 20000,
-    });
+  await page.goto(OFAC_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
 
-    if (!name) {
-      console.log("Empty name, skipping screenshot");
-      return;
-    }
+  // Clear previous input
+  await page.evaluate(() => {
+    const input = document.querySelector("#ctl00_MainContent_txtLastName");
+    if (input) input.value = "";
+  });
 
-    await page.type("#ctl00_MainContent_txtLastName", name);
-    await page.click("#ctl00_MainContent_btnSearch");
+  await page.type("#ctl00_MainContent_txtLastName", name);
+  await page.click("#ctl00_MainContent_btnSearch");
 
-    await page
-      .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 7000 })
-      .catch(() => console.log(`No results table for "${name}"`));
+  await page
+    .waitForSelector("#ctl00_MainContent_gvResults", { timeout: 7000 })
+    .catch(() => console.log(`No results table for "${name}"`));
 
-    await page.screenshot({ path: filepath, fullPage: true });
-    console.log(`Screenshot saved: ${filepath}`);
-  } catch (err) {
-    console.error(`Screenshot error for "${name}":`, err.message);
-  } finally {
-    if (browser) await browser.close();
-  }
+  await page.screenshot({ path: filepath, fullPage: true });
+  console.log(`Screenshot saved: ${filepath}`);
 }
 
 // ===== EXPORTABLE FUNCTION =====
-// progressCallback(currentIndex, total, publisherName) – optional
 async function runChecker(
   publishersFilePath,
   downloadsFolder,
@@ -132,8 +112,7 @@ async function runChecker(
   const total = publishers.length;
 
   // Create timestamped results folder
-  const now = new Date();
-  const timestamp = now.toISOString().replace(/[:.]/g, "-");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const resultsFolder = path.join(downloadsFolder, `OFAC Results ${timestamp}`);
   if (!fs.existsSync(resultsFolder)) fs.mkdirSync(resultsFolder);
 
@@ -146,13 +125,26 @@ async function runChecker(
     if (!fs.existsSync(responsesFolder)) fs.mkdirSync(responsesFolder);
   }
 
+  // ===== Launch single Puppeteer browser =====
+  console.log("Launching Chromium...");
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--single-process",
+    ],
+  });
+  const page = await browser.newPage();
+
   const results = [];
 
   for (let i = 0; i < total; i++) {
     const pub = publishers[i];
     const safeName = (pub.Name || "EMPTY").replace(/[^a-zA-Z0-9]/g, "_");
 
-    // Send progress: starting search
     if (progressCallback)
       progressCallback(i + 1, total, pub.Name, "Searching SDN/ALT lists");
     console.log(`Processing "${pub.Name}" (${i + 1}/${total})...`);
@@ -160,41 +152,35 @@ async function runChecker(
     const matches = searchName(pub.Name, screeningEntries);
     const status = matches.length > 0 ? "MATCH" : "CLEAR";
 
-    let screenshotLink = "";
-
+    // Save JSON for ALL
     if (SAVE_JSON_RESPONSES) {
-      // Save JSON for ALL (MATCH + CLEAR)
       const jsonPath = path.join(responsesFolder, `${safeName}_${i + 1}.json`);
       fs.writeFileSync(jsonPath, JSON.stringify(matches, null, 2));
-
-      // Take screenshot for ALL
-      const screenshotPath = path.join(
-        screenshotsFolder,
-        `${safeName}_${i + 1}.png`,
-      );
-
-      try {
-        if (progressCallback)
-          progressCallback(
-            i + 1,
-            total,
-            pub.Name,
-            `Taking OFAC screenshot for "${pub.Name}"`,
-          );
-
-        console.log(`Taking OFAC screenshot for "${pub.Name}"...`);
-        await takeScreenshot(pub.Name, screenshotPath);
-
-        screenshotLink = `./screenshots/${safeName}_${i + 1}.png`;
-      } catch (err) {
-        console.error("Screenshot error:", err.message);
-      }
     }
+
+    // Take screenshot for ALL
+    const screenshotPath = path.join(
+      screenshotsFolder,
+      `${safeName}_${i + 1}.png`,
+    );
+    try {
+      if (progressCallback)
+        progressCallback(
+          i + 1,
+          total,
+          pub.Name,
+          `Taking screenshot for "${pub.Name}"`,
+        );
+      await takeScreenshot(pub.Name, screenshotPath, page);
+    } catch (err) {
+      console.error(`Screenshot error for "${pub.Name}":`, err.message);
+    }
+
+    const screenshotLink = `./screenshots/${safeName}_${i + 1}.png`;
 
     let matchesString = matches
       .map((m) => `${m.matchedName} (score: ${m.score.toFixed(2)})`)
       .join("; ");
-
     if (matchesString.length > MAX_CELL_LENGTH) {
       matchesString =
         matchesString.slice(0, MAX_CELL_LENGTH) + " ...[truncated]";
@@ -205,13 +191,13 @@ async function runChecker(
       MatchStatus: status,
       MatchCount: matches.length,
       Matches: matchesString,
-      Screenshot: screenshotLink
-        ? { text: "View Screenshot", hyperlink: screenshotLink }
-        : "",
+      Screenshot: { text: "View Screenshot", hyperlink: screenshotLink },
     });
   }
 
-  // Save Excel with clickable links
+  await browser.close();
+
+  // ===== Save Excel =====
   const workbookOut = XLSX.utils.book_new();
   const sheetData = results.map((r) => ({
     Publisher: r.Publisher,
@@ -220,7 +206,6 @@ async function runChecker(
     Matches: r.Matches,
     Screenshot: r.Screenshot,
   }));
-
   const sheetOut = XLSX.utils.json_to_sheet(sheetData);
 
   results.forEach((r, idx) => {
@@ -237,11 +222,9 @@ async function runChecker(
   XLSX.utils.book_append_sheet(workbookOut, sheetOut, "OFAC_Results");
   XLSX.writeFile(workbookOut, path.join(resultsFolder, "OFAC_Results.xlsx"));
 
-  console.log(
-    `✅ Screening complete. Results saved in folder: ${resultsFolder}`,
-  );
+  console.log(`✅ Screening complete. Results saved in: ${resultsFolder}`);
   if (SAVE_JSON_RESPONSES)
-    console.log("Matched JSON responses saved inside responses folder.");
+    console.log("JSON responses saved inside responses folder.");
 
   return resultsFolder;
 }
